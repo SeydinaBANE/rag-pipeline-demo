@@ -177,6 +177,8 @@ class EvaluationSettings(BaseSettings):
     ragas_sample_size: int = Field(default=50, gt=0)
     experiment_tracking: bool = True
     experiments_dir: Path = ROOT_DIR / "data" / "experiments"
+    golden_dataset_path: Path = ROOT_DIR / "data" / "eval" / "golden_dataset.jsonl"
+    feedback_dir: Path = ROOT_DIR / "data" / "eval" / "feedback"
 
 
 class Settings(BaseSettings):
