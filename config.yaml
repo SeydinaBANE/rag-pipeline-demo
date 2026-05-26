@@ -1,0 +1,74 @@
+app:
+  name: rag-pipeline-demo
+  version: "0.1.0"
+  debug: false
+  log_level: INFO
+
+llm:
+  provider: ollama
+  model: mistral:7b-instruct
+  base_url: http://localhost:11434
+  temperature: 0.0
+  max_tokens: 2048
+  timeout: 120
+
+embedding:
+  provider: ollama
+  model: nomic-embed-text
+  base_url: http://localhost:11434
+  batch_size: 32
+  dimensions: 768
+
+chunking:
+  strategy: parent_child   # fixed | semantic | parent_child
+  chunk_size: 512
+  chunk_overlap: 64
+  parent_chunk_size: 2048
+
+retrieval:
+  k: 6
+  fetch_k: 20              # candidates avant reranking
+  use_reranker: true
+  use_hybrid: true
+  bm25_weight: 0.3
+  vector_weight: 0.7
+  use_hyde: false
+  use_multi_query: true
+  cache_ttl: 3600          # secondes
+  cache_similarity_threshold: 0.95
+
+vectorstore:
+  provider: chroma          # chroma | pgvector
+  persist_dir: .chroma
+  collection_prefix: rag
+
+database:
+  host: localhost
+  port: 5432
+  name: ragdb
+  pool_size: 10
+  max_overflow: 20
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  max_connections: 50
+
+api:
+  host: 0.0.0.0
+  port: 8000
+  workers: 4
+  rate_limit_per_minute: 60
+  max_upload_size_mb: 50
+
+evaluation:
+  ragas_sample_size: 50
+  experiment_tracking: true
+  experiments_dir: data/experiments
+
+monitoring:
+  langfuse_enabled: false
+  langfuse_host: http://localhost:3000
+  prometheus_enabled: true
+  prometheus_port: 9090

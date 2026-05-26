@@ -1,0 +1,178 @@
+version: "3.9"
+
+services:
+  # ── Ollama (LLM + Embedding local) ─────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: rag_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── Ollama model puller (one-shot) ─────────────────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: rag_ollama_pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama pull mistral:7b-instruct
+        ollama pull nomic-embed-text
+    restart: "no"
+
+  # ── ChromaDB (vector store local) ──────────────────────────────────────────
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: rag_chroma
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+      - ALLOW_RESET=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Redis (cache + rate limiting) ──────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: rag_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ── LangFuse (observabilité LLM) ───────────────────────────────────────────
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: rag_langfuse_db
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    container_name: rag_langfuse
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_SECRET: dev-secret-change-in-prod
+      NEXTAUTH_URL: http://localhost:3000
+      TELEMETRY_ENABLED: "false"
+
+  # ── FastAPI (backend) ───────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_api
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      - LLM__BASE_URL=http://ollama:11434
+      - EMBEDDING__BASE_URL=http://ollama:11434
+      - REDIS__HOST=redis
+      - MONITORING__LANGFUSE_HOST=http://langfuse:3000
+    depends_on:
+      ollama:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src      # hot-reload en dev
+      - ./config.yaml:/app/config.yaml
+      - chroma_data:/app/.chroma
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Worker SQS (indexation async) ─────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: rag_worker
+    env_file: .env
+    environment:
+      - LLM__BASE_URL=http://ollama:11434
+      - EMBEDDING__BASE_URL=http://ollama:11434
+      - REDIS__HOST=redis
+    depends_on:
+      ollama:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+
+  # ── Streamlit (démo) ───────────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_streamlit
+    ports:
+      - "8501:8501"
+    env_file: .env
+    environment:
+      - LLM__BASE_URL=http://ollama:11434
+      - EMBEDDING__BASE_URL=http://ollama:11434
+      - REDIS__HOST=redis
+    depends_on:
+      - api
+    volumes:
+      - ./src:/app/src
+      - ./app.py:/app/app.py
+    command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+
+volumes:
+  ollama_data:
+  chroma_data:
+  redis_data:
+  langfuse_db_data:
+
+networks:
+  default:
+    name: rag_network
