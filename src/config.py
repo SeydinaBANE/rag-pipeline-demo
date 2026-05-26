@@ -88,6 +88,15 @@ class RetrievalSettings(BaseSettings):
     cache_similarity_threshold: float = Field(default=0.95, ge=0.0, le=1.0)
 
 
+class GenerationSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="GENERATION_")
+
+    prompt_version: str = "v1"
+    max_context_docs: int = Field(default=5, gt=0)
+    min_input_length: int = Field(default=3, gt=0)
+    max_input_length: int = Field(default=1000, gt=0)
+
+
 class VectorStoreSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="VECTORSTORE_")
 
@@ -179,6 +188,7 @@ class Settings(BaseSettings):
     embedding: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     chunking: ChunkingSettings = Field(default_factory=ChunkingSettings)
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    generation: GenerationSettings = Field(default_factory=GenerationSettings)
     vectorstore: VectorStoreSettings = Field(default_factory=VectorStoreSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
