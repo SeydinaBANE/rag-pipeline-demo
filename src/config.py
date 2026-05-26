@@ -105,6 +105,15 @@ class VectorStoreSettings(BaseSettings):
     collection_prefix: str = "rag"
 
 
+class WorkerSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="WORKER_")
+
+    sqs_queue_url: str = ""
+    aws_region: str = "us-east-1"
+    poll_wait_seconds: int = Field(default=10, ge=1, le=20)
+    visibility_timeout: int = Field(default=300, gt=0)
+
+
 class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DB_")
 
@@ -190,6 +199,7 @@ class Settings(BaseSettings):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     generation: GenerationSettings = Field(default_factory=GenerationSettings)
     vectorstore: VectorStoreSettings = Field(default_factory=VectorStoreSettings)
+    worker: WorkerSettings = Field(default_factory=WorkerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     redis: RedisSettings = Field(default_factory=RedisSettings)
     api: APISettings = Field(default_factory=APISettings)
