@@ -1,0 +1,76 @@
+name: Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "API base URL to target"
+        required: true
+        default: "https://api-staging.rag.example.com"
+      users:
+        description: "Peak concurrent users"
+        required: false
+        default: "50"
+      spawn_rate:
+        description: "Users spawned per second"
+        required: false
+        default: "5"
+      duration:
+        description: "Test duration (e.g. 60s, 5m)"
+        required: false
+        default: "2m"
+  schedule:
+    - cron: "0 3 * * 3"  # Every Wednesday at 03:00 UTC against staging
+
+jobs:
+  load-test:
+    name: Locust Load Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install load-test dependencies
+        run: pip install locust python-jose[cryptography]
+
+      - name: Run Locust headless
+        env:
+          TARGET_URL: ${{ inputs.target_url || 'https://api-staging.rag.example.com' }}
+          LOAD_TEST_TENANT: load-test
+          LOAD_TEST_JWT_SECRET: ${{ secrets.LOAD_TEST_JWT_SECRET }}
+        run: |
+          locust \
+            -f tests/load/locustfile.py \
+            --host "$TARGET_URL" \
+            --headless \
+            -u "${{ inputs.users || 50 }}" \
+            -r "${{ inputs.spawn_rate || 5 }}" \
+            -t "${{ inputs.duration || '2m' }}" \
+            --html load-report.html \
+            --csv load-results \
+            --exit-code-on-error 1
+
+      - name: Upload load test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: load-test-${{ github.run_id }}
+          path: |
+            load-report.html
+            load-results*.csv
+          retention-days: 14
+
+      - name: Print summary
+        if: always()
+        run: |
+          if [ -f load-results_stats.csv ]; then
+            echo "## Load Test Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat load-results_stats.csv >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

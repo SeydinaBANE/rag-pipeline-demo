@@ -1,0 +1,72 @@
+name: RAGAS Evaluation
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # Every Monday at 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      sample_size:
+        description: "Number of golden-dataset samples to evaluate"
+        required: false
+        default: "7"
+  push:
+    paths:
+      - "src/evaluation/**"
+      - "data/eval/**"
+      - "src/generation/**"
+      - "src/retrieval/**"
+
+jobs:
+  eval-unit:
+    name: Evaluation Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run evaluation unit tests
+        run: |
+          python -m pytest tests/unit/test_evaluation.py -v
+
+  eval-ragas:
+    name: RAGAS Golden-Dataset Run
+    runs-on: ubuntu-latest
+    # Only run when the full Ollama stack is available (self-hosted or secrets configured)
+    if: ${{ vars.RAGAS_ENABLED == 'true' }}
+    needs: eval-unit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run RAGAS evaluation
+        env:
+          LLM__BASE_URL: ${{ secrets.LLM_BASE_URL }}
+          EVALUATION__GOLDEN_DATASET_PATH: data/eval/golden_dataset.jsonl
+        run: |
+          python -m pytest tests/unit/test_evaluation.py -v -k "ragas" \
+            --tb=short \
+            -o "log_cli=true"
+
+      - name: Upload evaluation artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: data/experiments/
+          retention-days: 30

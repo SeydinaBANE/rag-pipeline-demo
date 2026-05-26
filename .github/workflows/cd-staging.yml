@@ -1,0 +1,106 @@
+name: Deploy — Staging
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false  # Never cancel an in-progress deploy
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: RagCompute-Cluster
+  API_SERVICE: RagCompute-ApiService
+  WORKER_SERVICE: RagCompute-WorkerService
+
+jobs:
+  deploy:
+    name: Build & Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── AWS auth via OIDC (no stored long-lived credentials) ─────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_STAGING }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ── Build & push API image ────────────────────────────────────────────────
+      - name: Build and push API image
+        env:
+          REPO: ${{ secrets.ECR_API_REPO }}
+          SHA: ${{ github.sha }}
+        run: |
+          docker build -t "$REPO:$SHA" -t "$REPO:staging" -f Dockerfile .
+          docker push "$REPO:$SHA"
+          docker push "$REPO:staging"
+          echo "api_image=$REPO:$SHA" >> "$GITHUB_ENV"
+
+      # ── Build & push Worker image ─────────────────────────────────────────────
+      - name: Build and push Worker image
+        env:
+          REPO: ${{ secrets.ECR_WORKER_REPO }}
+          SHA: ${{ github.sha }}
+        run: |
+          docker build -t "$REPO:$SHA" -t "$REPO:staging" -f Dockerfile.worker .
+          docker push "$REPO:$SHA"
+          docker push "$REPO:staging"
+
+      # ── Update ECS task definitions with pinned SHA tags ─────────────────────
+      - name: Update API task definition
+        id: api-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: RagCompute-ApiTask
+          container-name: api
+          image: ${{ secrets.ECR_API_REPO }}:${{ github.sha }}
+
+      - name: Deploy API service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.api-task-def.outputs.task-definition }}
+          service: ${{ env.API_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Update Worker task definition
+        id: worker-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: RagCompute-WorkerTask
+          container-name: Worker
+          image: ${{ secrets.ECR_WORKER_REPO }}:${{ github.sha }}
+
+      - name: Deploy Worker service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.worker-task-def.outputs.task-definition }}
+          service: ${{ env.WORKER_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      # ── Smoke test ────────────────────────────────────────────────────────────
+      - name: Smoke test
+        env:
+          API_URL: ${{ secrets.STAGING_API_URL }}
+        run: |
+          for i in $(seq 1 6); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health")
+            [ "$STATUS" = "200" ] && echo "✓ /health returned 200" && exit 0
+            echo "Attempt $i: /health returned $STATUS — retrying in 10s"
+            sleep 10
+          done
+          echo "Smoke test failed after 60s" && exit 1

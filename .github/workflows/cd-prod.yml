@@ -1,0 +1,117 @@
+name: Deploy — Production
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to promote (git SHA or semver tag)"
+        required: true
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  ECS_CLUSTER: RagCompute-Cluster
+  API_SERVICE: RagCompute-ApiService
+  WORKER_SERVICE: RagCompute-WorkerService
+
+jobs:
+  deploy:
+    name: Promote & Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production  # Requires manual approval gate in GitHub Environments
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Promote staging image to prod tag (no re-build — same binary)
+      - name: Promote API image to :prod
+        env:
+          REPO: ${{ secrets.ECR_API_REPO }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          docker pull "$REPO:$TAG"
+          docker tag  "$REPO:$TAG" "$REPO:prod"
+          docker push "$REPO:prod"
+
+      - name: Promote Worker image to :prod
+        env:
+          REPO: ${{ secrets.ECR_WORKER_REPO }}
+          TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          docker pull "$REPO:$TAG"
+          docker tag  "$REPO:$TAG" "$REPO:prod"
+          docker push "$REPO:prod"
+
+      - name: Update API task definition
+        id: api-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: RagCompute-ApiTask
+          container-name: api
+          image: ${{ secrets.ECR_API_REPO }}:${{ steps.resolve.outputs.tag }}
+
+      - name: Deploy API service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.api-task-def.outputs.task-definition }}
+          service: ${{ env.API_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Update Worker task definition
+        id: worker-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition-family: RagCompute-WorkerTask
+          container-name: Worker
+          image: ${{ secrets.ECR_WORKER_REPO }}:${{ steps.resolve.outputs.tag }}
+
+      - name: Deploy Worker service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.worker-task-def.outputs.task-definition }}
+          service: ${{ env.WORKER_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Smoke test — production
+        env:
+          API_URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health")
+            [ "$STATUS" = "200" ] && echo "✓ /health 200 — production deploy successful" && exit 0
+            echo "Attempt $i: got $STATUS — retrying in 15s"
+            sleep 15
+          done
+          echo "Smoke test failed after 150s" && exit 1
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
