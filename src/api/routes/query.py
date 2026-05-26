@@ -5,6 +5,7 @@ import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
+from src.analytics.prometheus import record_query
 from src.api.deps import Chain, CurrentUser, RateLimiter
 from src.api.schemas import QueryRequest, QueryResponse, SourceDocument
 
@@ -20,6 +21,7 @@ def query(
 ) -> QueryResponse:
     limiter.check(current_user.tenant_id)
     response = chain.invoke(request.query, tenant_id=current_user.tenant_id)
+    record_query(response, tenant_id=current_user.tenant_id)
     sources = [
         SourceDocument(
             content=doc.page_content[:300],
