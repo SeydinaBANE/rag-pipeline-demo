@@ -46,6 +46,22 @@ warn_unused_configs = true
 ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_decorators = false
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# LangChain doesn't ship complete stubs — suppress Any-return noise from its internals
+module = [
+    "langchain_text_splitters.*",
+    "langchain_community.*",
+    "langchain_chroma.*",
+    "langchain_experimental.*",
+    "langchain_ollama.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
