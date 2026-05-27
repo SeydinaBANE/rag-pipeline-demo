@@ -23,7 +23,6 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 COPY --from=builder /install /usr/local
 COPY src/ ./src/
 COPY config.yaml .
-COPY app.py .
 
 RUN chown -R appuser:appuser /app
 USER appuser
