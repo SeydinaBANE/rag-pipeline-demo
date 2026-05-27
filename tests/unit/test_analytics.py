@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.documents import Document
 from src.analytics.langfuse import LangFuseTracer
-from src.analytics.prometheus import RAG_LATENCY, RAG_QUERIES, record_query
+from src.analytics.prometheus import RAG_QUERIES, record_query
 from src.analytics.tracker import QueryRecord, QueryTracker
 from src.generation.chain import RAGResponse
 
@@ -103,9 +103,17 @@ class TestRecordQuery:
         assert after == before + 1
 
     def test_observes_latency(self) -> None:
-        before_count = RAG_LATENCY.labels(tenant_id="prom-lat")._count.get()
+        from prometheus_client import REGISTRY
+
+        before_count = (
+            REGISTRY.get_sample_value("rag_query_latency_seconds_count", {"tenant_id": "prom-lat"})
+            or 0.0
+        )
         record_query(_make_response(latency_ms=500.0), tenant_id="prom-lat")
-        after_count = RAG_LATENCY.labels(tenant_id="prom-lat")._count.get()
+        after_count = (
+            REGISTRY.get_sample_value("rag_query_latency_seconds_count", {"tenant_id": "prom-lat"})
+            or 0.0
+        )
         assert after_count == before_count + 1
 
     def test_cached_true_sets_label(self) -> None:
@@ -136,7 +144,7 @@ class TestLangFuseTracer:
         mock_trace = MagicMock()
         mock_client.trace.return_value = mock_trace
 
-        with patch("src.analytics.langfuse.Langfuse", return_value=mock_client):
+        with patch("langfuse.Langfuse", return_value=mock_client):
             tracer = LangFuseTracer(enabled=True, host="http://lf", secret_key="s", public_key="p")  # noqa: S106
 
         assert tracer.enabled
@@ -145,7 +153,7 @@ class TestLangFuseTracer:
         mock_trace.generation.assert_called_once()
 
     def test_init_failure_degrades_gracefully(self) -> None:
-        with patch("src.analytics.langfuse.Langfuse", side_effect=RuntimeError("conn refused")):
+        with patch("langfuse.Langfuse", side_effect=RuntimeError("conn refused")):
             tracer = LangFuseTracer(enabled=True, host="http://bad", secret_key="s", public_key="p")  # noqa: S106
         assert not tracer.enabled
 
@@ -153,7 +161,7 @@ class TestLangFuseTracer:
         mock_client = MagicMock()
         mock_client.trace.side_effect = RuntimeError("timeout")
 
-        with patch("src.analytics.langfuse.Langfuse", return_value=mock_client):
+        with patch("langfuse.Langfuse", return_value=mock_client):
             tracer = LangFuseTracer(enabled=True, host="http://lf", secret_key="s", public_key="p")  # noqa: S106
 
         tracer.trace("exp-1", _make_response(), "acme")  # must not raise

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import structlog
 from langchain_core.documents import Document
+from sentence_transformers import CrossEncoder
 
 logger = structlog.get_logger(__name__)
 
@@ -18,8 +19,6 @@ class Reranker:
     """
 
     def __init__(self, model_name: str = _DEFAULT_MODEL) -> None:
-        from sentence_transformers import CrossEncoder
-
         self._model: CrossEncoder = CrossEncoder(model_name)
         logger.info("reranker_initialized", model=model_name)
 

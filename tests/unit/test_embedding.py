@@ -8,7 +8,7 @@ from src.embedding.batch import BatchEmbedder
 
 class TestBatchEmbedder:
     def test_embeds_in_batches(self, mock_embedder: MagicMock) -> None:
-        mock_embedder.embed_documents.return_value = [[0.1] * 768] * 3
+        mock_embedder.embed_documents.side_effect = lambda texts: [[0.1] * 768] * len(texts)
 
         batcher = BatchEmbedder(mock_embedder, batch_size=3)
         texts = [f"text {i}" for i in range(7)]
