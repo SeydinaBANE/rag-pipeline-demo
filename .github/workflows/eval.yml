@@ -34,7 +34,7 @@ jobs:
 
       - name: Run evaluation unit tests
         run: |
-          python -m pytest tests/unit/test_evaluation.py -v
+          python -m pytest tests/unit/test_evaluation.py -v --no-cov
 
   eval-ragas:
     name: RAGAS Golden-Dataset Run

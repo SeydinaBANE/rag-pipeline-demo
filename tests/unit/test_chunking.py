@@ -101,8 +101,8 @@ class TestParentChildChunker:
 class TestSemanticSplitter:
     def test_split_delegates_to_underlying_chunker(self, long_doc: Document) -> None:
         mock_embedder = MagicMock()
-        # SemanticChunker calls embed_documents during split
-        mock_embedder.embed_documents.return_value = [[0.1] * 768]
+        # SemanticChunker embeds each sentence; return one vector per input text
+        mock_embedder.embed_documents.side_effect = lambda texts: [[0.1] * 768] * len(texts)
 
         splitter = SemanticSplitter(embeddings=mock_embedder)
         # We just verify it doesn't raise and returns documents

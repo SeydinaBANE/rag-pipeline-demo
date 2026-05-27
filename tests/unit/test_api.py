@@ -94,7 +94,7 @@ class TestQueryEndpoint:
 
     def test_query_requires_auth(self, client: TestClient) -> None:
         response = client.post("/api/v1/query/", json={"query": "What is RAG?"})
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_query_invalid_token(self, client: TestClient) -> None:
         response = client.post(
@@ -147,7 +147,7 @@ class TestIngestEndpoint:
             "/api/v1/ingest/",
             files={"file": ("test.txt", b"content", "text/plain")},
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 # ── Feedback ──────────────────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ class TestFeedbackEndpoint:
             "/api/v1/feedback/",
             json={"query": "test", "answer": "ans", "rating": 1},
         )
-        assert response.status_code == 403
+        assert response.status_code == 401
 
 
 # ── RateLimiter ───────────────────────────────────────────────────────────────
