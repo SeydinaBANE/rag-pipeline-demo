@@ -11,6 +11,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t rag-api:ci -f Dockerfile .
+
   lint-and-test:
     name: Lint & Unit Tests
     runs-on: ubuntu-latest
