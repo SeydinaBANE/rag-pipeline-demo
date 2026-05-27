@@ -1,5 +1,11 @@
 # rag-pipeline-demo
 
+[![Python](https://img.shields.io/badge/python-3.11-blue?logo=python)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3-1C3C3C?logo=langchain)](https://www.langchain.com/)
+[![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Pipeline RAG industrialisé — 100 % local en dev, déployable AWS en prod.
 
 Construit pour démontrer les pratiques senior : hybrid search, reranking,
