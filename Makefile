@@ -3,8 +3,8 @@
         backup-check cost-report clean frontend-install frontend-dev frontend-build \
         frontend-test frontend-e2e frontend-lint
 
-PYTHON     := python3
 VENV       := .venv
+PYTHON     := $(VENV)/bin/python
 PIP        := $(VENV)/bin/pip
 PYTEST     := $(VENV)/bin/pytest
 RUFF       := $(VENV)/bin/ruff
@@ -27,7 +27,7 @@ run:  ## Lance l'interface Streamlit (démo locale)
 	$(VENV)/bin/streamlit run app.py
 
 api:  ## Lance le serveur FastAPI en dev (hot-reload)
-	$(VENV)/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+	$(VENV)/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir src
 
 # ── Docker ───────────────────────────────────────────────────────────────────
 docker-up:  ## Démarre la stack locale complète (Ollama + Chroma + Redis + LangFuse + API)

@@ -32,6 +32,9 @@ htmlcov/
 # Vector store
 .chroma/
 
+# Indexation cache (hashes + versions — données locales)
+.cache/
+
 # Data (source docs et experiments non versionnés)
 data/docs/*
 data/experiments/
